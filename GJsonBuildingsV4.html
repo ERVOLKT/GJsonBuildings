@@ -1,0 +1,349 @@
+<!doctype html>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>BuildingsPerOSM</title>
+	
+	<!-- local css files -->
+        <link rel="stylesheet" href="leaflet/leaflet.css" />
+      
+        <style>
+        /* resonsive design, mobile first, et al */
+        
+            /*all elements*/
+            *{ box-sizing: border-box;}
+            
+            html,body { 
+                height: 100%; 
+                margin: 0px; 
+                padding: 0px; }            
+
+            /*grid rows*/
+            .row {
+                width: 100%;
+                height: 100%; /* multiple rows:decrease for multiple even-sized rows or dont for a blog-like effect */   
+            }
+
+            /* important for correct responsiveness*/
+            [class*="col-"] {
+                float: left; 
+                padding: 15px; 
+            }
+
+            /* Mobile first: all stacked */
+            [class*="col-s"] {
+                width: 100%;
+            }
+
+            #map { 
+                height: 85%;
+                z-index: 1;
+            }
+
+            #geosearch_div{
+                height: 15%;
+            }
+
+            /* For tablets: */
+            @media only screen and (min-width: 600px) {
+               .col-m-1 {width: 8.33%;}
+               .col-m-2 {width: 16.66%;}
+               .col-m-3 {width: 25%;}
+               .col-m-4 {width: 33.33%;}
+               .col-m-5 {width: 41.66%;}
+               .col-m-6 {width: 50%;}
+               .col-m-7 {width: 58.33%;}
+               .col-m-8 {width: 66.66%;}
+               .col-m-9 {width: 75%;}
+               .col-m-10 {width: 83.33%;}
+               .col-m-11 {width: 91.66%;}
+               .col-m-12 {width: 100%;}
+               #map {height:100%;}
+               #geosearch_div{height: 100%;}
+            }
+
+            /* For desktop: */
+            @media only screen and (min-width: 768px) {   
+               .col-l-1 {width: 8.33%;}
+               .col-l-2 {width: 16.66%;}
+               .col-l-3 {width: 25%;}
+               .col-l-4 {width: 33.33%;}
+               .col-l-5 {width: 41.66%;}
+               .col-l-6 {width: 50%;}
+               .col-l-7 {width: 58.33%;}
+               .col-l-8 {width: 66.66%;}
+               .col-l-9 {width: 75%;}
+               .col-l-10 {width: 83.33%;}
+               .col-l-11 {width: 91.66%;}
+               .col-l-12 {width: 100%;}
+               #map {height:100%;}
+               #geosearch_div{height: 100%;}
+            }
+	    
+    	    input {
+                width: 85%;
+    	        height:2rem;
+                font-size: 1.2rem;
+    		    border-radius: 0.5rem;
+    		}
+
+            button {
+                height:2rem;
+                background-color: rgba(56,226,22,0.9);
+                border: none;
+                border-radius: 0.5rem;
+                color: white;
+                padding: 0.3rem 0.5rem;
+                text-align: center;
+                text-decoration: none;
+                display: inline-block;
+                font-size: 1.2rem;		
+            }
+
+            button:hover {
+                box-shadow: 0 0.1rem #666;
+                background-color: #3e8e41}
+
+            button:active {
+              background-color: #3e8e41;
+              transform: translateY(0.1rem);
+            }
+
+            #instruction {
+            z-index: 100;
+            position:fixed;
+            top: 2%;
+            left: 2%;
+            width:96%;
+            height:auto;
+            min-height:20%;
+
+      /*      margin-top: -7em;*/ /*set to a negative number 1/2 of your height*/
+            background-color: rgba( 43,140,190,0.5 );
+            border: none;
+            border-radius: 25px;
+            color: white;
+            padding: 1rem 0.33rem 2rem;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 1.5rem;
+            font-family: Arial, Helvetica, sans-serif;
+            box-shadow: 0.5rem 1rem rgba(102, 102, 153, 0.65);
+            }
+            
+
+
+            
+        </style>
+
+        <!-- local javascript libraries -->
+        <script type="text/javascript" src="leaflet/leaflet.js"></script>
+        <script src='osmtogeojson/osmtogeojson.js'></script>
+	    <script src="turf/turf.min.js" charset="utf-8"></script>
+        <script src="hammer/hammer.min.js"></script>
+        <script src="jquery_min/jquery-3.3.1.min.js"></script>
+
+        <script type="text/javascript">
+/* ++++++++++++++++++++++++++++  Composed by Volker Theil, 2019+++++++++++++++++++++++++++++*/
+            $( document ).ready(function() {
+
+    // jetzt noch die schönere download-Variante mit 3857 und polygonen, geocod-div als erstes
+                // geosearch event listeners for Button and ENTER       
+                document.getElementById("geosearch_button").addEventListener("click", geosearch);       
+                document.getElementById('geosearch_input').onkeydown = function(e){     
+                    if(e.keyCode == 13){     
+                    geosearch()        
+                    }        
+                };
+
+                // Kartenobjekt erstellen, mit Optionen zum Zentrieren und Zoom Level setzen
+                var map = L.map('map').setView([49.791210, 8.789330], 10);
+                
+                // Als Baselayer ein OpenStreetMap Tile Layer mit Attribution hinzufuegen
+                var osm = L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+                });
+                   
+                map.addLayer (osm);
+
+                var topright;
+
+                //DOM event listener
+                /*map.on('mousedown ', function(ev){
+                var click_lats  =[]
+                var click_lons  = []
+                                    var latlng = map.mouseEventToLatLng(ev.originalEvent);
+                                    alert(latlng.lat + ', ' + latlng.lng);
+
+                                  });*/
+                
+                // double press event listener and handler via hammer.js,
+                var hammertime = new Hammer(document.getElementById('map'),{});
+                hammertime.get('press').set({ enable: true, pointers:2 });
+                hammertime.on('press', function(ev) {
+                   //alert ("gkl")
+                
+                var press_lats = []
+                var press_lons = []
+
+                var latlng1 = map.mouseEventToLatLng(ev.srcEvent.touches[0]);
+                var latlng2 = map.mouseEventToLatLng(ev.srcEvent.touches[1]);
+                /* document.getElementById("debug").innerHTML += latlng1.lat +","+ latlng1.lng+"\n"+ latlng2.lat +","+ latlng2.lng
+                */
+                press_bounds = L.latLngBounds(latlng1,latlng2)
+
+                L.rectangle(press_bounds, {color: "#ff7800", weight: 1}).addTo(map); 
+                map.fitBounds(press_bounds)
+
+                if (latlng1.lat > latlng2.lat && latlng1.lng > latlng2.lng ){
+                  //alert("1. noerdlicher und 1. oestlicher")
+                  var bottom_left = latlng2.lat +","+ latlng2.lng;
+                  var top_right = latlng1.lat +","+ latlng1.lng;   
+                }
+                else if (latlng1.lat > latlng2.lat && latlng2.lng > latlng1.lng){
+                  //alert("1. noerdlicher und 2. oestlicher")
+                  var bottom_left = latlng2.lat +","+ latlng1.lng;
+                  var top_right = latlng1.lat +","+ latlng2.lng;  
+                }
+
+                else if (latlng2.lat > latlng1.lat && latlng1.lng > latlng2.lng){
+                  //alert("2. noerdlicher und 1. oestlicher")
+                  var bottom_left = latlng1.lat +","+ latlng2.lng;
+                  var top_right = latlng2.lat +","+ latlng1.lng;
+                }
+                else if (latlng2.lat > latlng1.lat && latlng2.lng > latlng1.lng){
+                  //dieser Fall scheint immer falsch abgefangen zu werden
+                  // naemlich tritt dieser immer ein wenn man links oben startet und rechts unten aufhoert
+                  // aber scheinbar wird es im Hintergrund automatisch ausgetauscht...
+                  //alert("2. noerdlicher und 2. oestlicher")
+                  var bottom_left = latlng1.lat +","+ latlng1.lng;
+                  var top_right = latlng2.lat +","+ latlng2.lng;  
+                }
+                else {
+                  //alert("ein anderer Fall!")
+                }
+
+                feature_request(top_right,bottom_left);
+                })
+
+                // listener on zoombox
+                map.on("boxzoomend", function(e){
+                  // for (x in e){console.log(e);}
+                  
+                  var top_right = e.boxZoomBounds._northEast.lat +","+ e.boxZoomBounds._northEast.lng;
+                  var bottom_left = e.boxZoomBounds._southWest.lat +","+ e.boxZoomBounds._southWest.lng;
+                  feature_request(top_right,bottom_left);                  
+                })
+
+                function geosearch(){
+            
+                    var search_string = document.getElementById('geosearch_input').value;
+                    
+                    /* https://nominatim.openstreetmap.org/search/Unter%20den%20Linden%201%20Berlin?format=json&addressdetails=1&limit=1&polygon_svg=1 */
+
+                    var url_start = 'https://nominatim.openstreetmap.org/search/'
+
+                    var url_end = '?format=json&addressdetails=1&limit=1'
+
+                    var url_whole = url_start + search_string + url_end
+
+                    console.log(url_whole);
+
+                    $.get(url_whole, function (nom_data) {
+                        console.log(nom_data[0].boundingbox[0]);
+                        var corner1 = L.latLng(nom_data[0].boundingbox[0], nom_data[0].boundingbox[2])
+                        var corner2 = L.latLng(nom_data[0].boundingbox[1], nom_data[0].boundingbox[3])
+                        console.log(corner1, corner2)
+                        //console.log(map);
+                        //map.zoomOut(1);
+                        map.flyToBounds(L.latLngBounds(corner1, corner2));
+                    })
+                }
+
+                function feature_request(topright, bottomleft){
+                  var urlbegin = 'https://overpass-api.de/api/interpreter?data=[out:json][timeout:25];(way["building"](';
+                  var delimit = ',';
+                  var urlend = '););out;>;out skel qt;'
+                  var overpass_url = urlbegin + bottomleft + delimit + topright + urlend;
+                  //pass in overpass string and get json repsonse
+                    //pass in overpass string and get json repsonse from overpass api
+                    $.get(overpass_url, function (data) {
+                        
+            //transform response to geojson w/ osmtogeojson
+            var geojayson = osmtogeojson(data);
+            
+            
+            //empty geojson properties (better than later w/ strings) -> smaller and create empty field Nutzung
+            var g_len = geojayson.features.length;
+                        for (i=0;i<g_len;i++){ 
+                            var curr_feat = geojayson.features[i]
+                //console.log("vorher: "+curr_feat.properties);
+                /* leeres Feld Nutzung anlegen */ 
+                                curr_feat.properties = {"Nutzung":""};
+                //console.log("nachhher: "+curr_feat.properties);
+                        }
+            //pass in explicit 3857 tag
+            geojayson["crs"] =  { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::3857" } }
+            //console.log(geojayson)
+        
+            // transform to web mercator / EPSG 3857 w/ turf
+            var transformed = turf.toMercator(geojayson);
+            console.log(transformed);
+              
+                        
+                 //show 4326 version in Leaflet  ...     
+                        var resultLayer = L.geoJson(geojayson, {}).addTo(map);
+                        map.zoomOut(1);
+
+        //... but download explicit 3857 version 
+                        //stringify is the opposite of parse, namely make a string
+                        download('sample.geojson', JSON.stringify(transformed));
+                    }) 
+                }
+
+                function download(filename, text) {
+                  var element = document.createElement('a');
+                  element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+                  element.setAttribute('download', filename);
+
+                  element.style.display = 'none';
+                  document.body.appendChild(element);
+
+                  element.click();
+
+                  document.body.removeChild(element);
+                }
+
+                function hide_info(){
+                  //  console.log(this)
+                    document.getElementById("instruction").style.display = 'none'; 
+                }
+                document.getElementById("instruction").addEventListener("mouseover", hide_info);
+                document.getElementById("map").addEventListener("click", hide_info); 
+                /*document.getElementById('geosearch_div').addEventListener("doubleclick", function(){
+                  map.dragging.disable();
+                  }
+                );*/
+            }); 
+        </script>
+    </head>
+    <body>
+        <div class ="row">
+            <div id="geosearch_div" class="col-l-2 col-m-3 col-s">
+                <input id="geosearch_input" type="text" value="Ludwigsburg"></input>
+                <button id="geosearch_button">Suche</button>    
+            </div>
+            <div id="map" class="col-l-10 col-m-9 col-s">
+            </div>
+        </div>
+        <div id="instruction">
+            <p><b>Bitte SHIFT halten und einen Rahmen aufziehen ODER (mobil) zwei Finger als Rahmen anlegen </b></p>
+            <p><emph>Die Buildings werden von OSM heruntergeladen & im Download-Ordner als sample.geojson gespeichert </emph></p>
+            <p>Bitte nicht zum Massendownload benutzen. Danke</p>
+        </div>
+
+    </body>
+</html>
+
